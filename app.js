@@ -67,11 +67,14 @@ const App = () => {
   const [proxies, setProxies] = useState([]);
   const [ruleProviders, setRuleProviders] = useState([]);
   const [proxyProviders, setProxyProviders] = useState([]);
+  const [proxyLatencies, setProxyLatencies] = useState({}); // 新增状态管理
+
   const getTraffic = async () => {
     for await (const traffic of clash.traffic()) {
       setTraffic(traffic);
     }
   };
+
   const load = async () => {
     const config = await clash.config();
     const rules = await clash.getRules();
@@ -83,18 +86,23 @@ const App = () => {
     setProxyProviders(proxyProviders);
     setProxies(getProxiesFromRules(rules, proxies));
   };
+
   const testLatency = async proxy => {
     for (const name of proxy.all) {
       const latency = await clash.delay(name);
       console.log(name, latency);
+      setProxyLatencies(proxyLatencies => {
+        return { ...proxyLatencies, [name]: latency };
+      });
     }
-    load();
   };
+
   useEffect(() => {
     load();
     getTraffic();
     setInterval(load, 1000 * 30);
   }, []);
+
   return [
     h(Panel, { header: h('h2', null, "Clash") }, [
       h(List, {}, [
@@ -140,9 +148,9 @@ const App = () => {
             ]),
             h('span', {
               style: {
-                color: delayColor(last(p.history)?.delay),
+                color: delayColor(proxyLatencies[p.name] || last(p.history)?.delay),
               },
-            }, `${p.history[0]?.delay}ms`),
+            }, `${proxyLatencies[p.name] || last(p.history)?.delay}ms`),
           ])
         )),
       ])
