@@ -1,3 +1,4 @@
+import { last } from 'https://lsong.org/scripts/array.js';
 import { ready, cls } from 'https://lsong.org/scripts/dom.js';
 import { h, render, useState, useEffect, Panel, List, ListItem } from 'https://lsong.org/scripts/react/index.js';
 import { Clash } from './clash.js';
