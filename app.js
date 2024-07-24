@@ -96,7 +96,7 @@ const App = () => {
     setInterval(load, 1000 * 30);
   }, []);
   return [
-    h(Panel, { title: h('h2', null, "Clash") }, [
+    h(Panel, { header: h('h2', null, "Clash") }, [
       h(List, {}, [
         h(ListItem, null, [
           "Traffic",
@@ -117,7 +117,7 @@ const App = () => {
       ]),
     ]),
 
-    h(Panel, { title: h('h2', null, "Rules") },
+    h(Panel, { header: h('h2', null, "Rules") },
       h(List, null, rules.map(rule => h(ListItem, null, [
         h('div', { className: 'flex-y' }, [
           h('span', null, rule.type),
