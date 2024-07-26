@@ -62,7 +62,7 @@ const bit2Human = (bits) => {
 
 const App = () => {
   const [config, setConfig] = useState({});
-  const [traffic, setTraffic] = useState({});
+  const [traffic, setTraffic] = useState({ up: 0, down: 0 });
   const [rules, setRules] = useState([]);
   const [proxies, setProxies] = useState([]);
   const [ruleProviders, setRuleProviders] = useState([]);
@@ -80,6 +80,7 @@ const App = () => {
     const rules = await clash.getRules();
     const proxies = await clash.getProxies();
     const ruleProviders = await clash.getRuleProviders();
+    const proxyProviders = await clash.getProxyProviders();
     setRules(rules);
     setConfig(config);
     setRuleProviders(ruleProviders);
@@ -94,6 +95,13 @@ const App = () => {
       setProxyLatencies(proxyLatencies => {
         return { ...proxyLatencies, [name]: latency };
       });
+    }
+  };
+
+  const setMode = mode => {
+    return async () => {
+      await clash.setConfig({ mode });
+      await load();
     }
   };
 
@@ -117,9 +125,9 @@ const App = () => {
         h(ListItem, null, [
           "Mode",
           h('div', { className: 'button-group' }, [
-            h('button', { className: cls({ active: config.mode == 'direct' }), onClick: () => clash.setMode('direct') }, "direct"),
-            h('button', { className: cls({ active: config.mode == 'rule' }), onClick: () => clash.setMode('rule') }, "rule"),
-            h('button', { className: cls({ active: config.mode == 'global' }), onClick: () => clash.setMode('global') }, "global"),
+            h('button', { className: cls({ active: config.mode == 'direct' }), onClick: setMode('direct') }, "direct"),
+            h('button', { className: cls({ active: config.mode == 'rule' }), onClick: setMode('rule') }, "rule"),
+            h('button', { className: cls({ active: config.mode == 'global' }), onClick: setMode('global') }, "global"),
           ]),
         ]),
       ]),
@@ -129,14 +137,15 @@ const App = () => {
       h(List, null, rules.map(rule => h(ListItem, null, [
         h('div', { className: 'flex-y' }, [
           h('span', null, rule.type),
-          h('a', {}, rule.payload),
+          h('a', { href: rule.type === 'RuleSet' ? `#rs-${rule.payload}` : null }, rule.payload),
         ]),
-        h('span', null, rule.proxy),
+        h('a', { href: `#p-${rule.proxy}` }, rule.proxy),
       ]))),
     ),
     h('h2', null, "Proxies"),
     proxies.map(proxy =>
       h(Panel, {
+        id: `p-${proxy.name}`,
         title: proxy.name,
         header: h('button', { onClick: () => testLatency(proxy) }, "⚡️"),
       }, [
@@ -144,7 +153,7 @@ const App = () => {
           h(ListItem, { className: cls({ 'active': proxy.now == p.name }) }, [
             h('div', { className: 'flex-y' }, [
               h('span', null, p.name),
-              h('span', null, p.type),
+              h('span', { className: 'color-999' }, p.type),
             ]),
             h('span', {
               style: {
@@ -155,6 +164,46 @@ const App = () => {
         )),
       ])
     ),
+    h(Panel, { header: h('h2', null, "Rule Providers") }, [
+      h(List, {}, ruleProviders.map(provider =>
+        h(ListItem, { id: `rs-${provider.name}` }, [
+          h('div', { className: 'flex-y' }, [
+            h('span', null, provider.name),
+            h('span', { className: 'color-999' }, `${provider.behavior} / ${provider.vehicleType}`),
+          ]),
+          h('div', { className: 'flex-y text-right' }, [
+            h('span', { className: 'color-green' }, provider.ruleCount),
+            h('span', { className: 'text-muted color-999' }, provider.updatedAt),
+          ])
+        ])
+      )),
+    ]),
+
+    h('h2', null, "Proxy Providers"),
+    proxyProviders.map(provider =>
+      h(Panel, {
+        title: provider.name,
+        header: h('div', null, [
+          h('button', { onClick: () => testLatency(provider) }, "⚡️"),
+          h('button', {}, "♻️"),
+        ])
+      }, [
+        h(List, {}, provider.proxies.map(p =>
+          h(ListItem, { className: cls({ 'active': provider.now == p.name }) }, [
+            h('div', { className: 'flex-y' }, [
+              h('span', null, p.name),
+              h('span', { className: 'color-999' }, p.type),
+            ]),
+            h('span', {
+              style: {
+                color: delayColor(p.latency),
+              },
+            }, `${p.history[0]?.delay}ms`),
+          ])
+        )),
+      ])
+    ),
+
   ]
 }
 
