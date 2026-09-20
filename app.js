@@ -1,213 +1,400 @@
-import { last } from 'https://lsong.org/scripts/array.js';
-import { ready, cls } from 'https://lsong.org/scripts/dom.js';
-import { h, render, useState, useEffect, Panel, List, ListItem } from 'https://lsong.org/scripts/react/index.js';
+import { h, render } from 'https://esm.sh/preact@10.27.1';
+import { useEffect, useMemo, useState } from 'https://esm.sh/preact@10.27.1/hooks';
+import htm from 'https://esm.sh/htm@3.1.1';
 import { Clash } from './clash.js';
 
-const clash = new Clash({
-  api: 'https://clash.lsong.one',
-  secret: 'clash@lsong.org'
-});
+const html = htm.bind(h);
+const tabs = ['overview', 'proxies', 'rules', 'connections', 'settings'];
+const storageKey = 'clash-demo:controller';
+const defaults = { api: 'https://clash.lsong.one', secret: '' };
 
-const getProxiesFromRules = (rules, proxies) => {
-  const system = new Set(["REJECT", "DIRECT"]);
-  const proxyMap = proxies.reduce((map, proxy) => {
-    map[proxy.name] = proxy;
-    return map;
-  }, {});
-
-  const proxyNames = [...new Set(rules
-    .map(rule => rule.proxy)
-    .filter(x => !system.has(x))
-  )];
-
-  const buildProxy = (name) => {
-    const p = proxyMap[name];
-    p.proxies = p.all.map(n => proxyMap[n]).filter(Boolean);
-    return p;
-  };
-
-  const proxyGroup = [];
-  proxyNames.forEach(name => {
-    const proxy = buildProxy(name);
-    if (proxy) proxyGroup.push(proxy);
-  });
-
-  const processNestedProxies = (proxies) => {
-    proxies.forEach(proxy => {
-      proxy.proxies.forEach(p => {
-        if (p.type === 'URLTest' && !proxyGroup.includes(p)) {
-          proxyGroup.push(buildProxy(p.name));
-        }
-      });
-    });
-  };
-
-  processNestedProxies(proxyGroup);
-  return proxyGroup.filter((x, i, arr) => arr.findIndex(y => y.name === x.name) === i);
+const bytes = value => {
+  const n = Number(value) || 0;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(Math.floor(Math.log(Math.max(n, 1)) / Math.log(1024)), units.length - 1);
+  return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${units[i]}`;
 };
+const rate = value => `${bytes(value)}/s`;
+const ago = value => value ? new Date(value).toLocaleString() : '—';
+const target = meta => meta?.host || meta?.destinationIP || meta?.remoteDestination || '—';
 
-const delayColor = (delay) => {
-  if (!delay) return 'grey';
-  if (delay < 1000) return '#2ecc71';
-  if (delay < 2000) return '#f1c40f';
-  if (delay < 3000) return '#e67e22';
-  return 'red';
-};
-
-const bit2Human = (bits) => {
-  if (bits < 1024) return bits + 'b';
-  if (bits < 1024 * 1024) return (bits / 1024).toFixed(1) + 'kb';
-  return (bits / (1024 * 1024)).toFixed(1) + 'mb';
-};
-
-const App = () => {
-  const [config, setConfig] = useState({});
-  const [traffic, setTraffic] = useState({ up: 0, down: 0 });
-  const [rules, setRules] = useState([]);
-  const [proxies, setProxies] = useState([]);
-  const [ruleProviders, setRuleProviders] = useState([]);
-  const [proxyProviders, setProxyProviders] = useState([]);
-  const [proxyLatencies, setProxyLatencies] = useState({}); // 新增状态管理
-
-  const getTraffic = async () => {
-    for await (const traffic of clash.traffic()) {
-      setTraffic(traffic);
-    }
+function useRoute() {
+  const read = () => {
+    const route = location.hash.slice(1).split('/')[0];
+    return tabs.includes(route) ? route : 'overview';
   };
-
-  const load = async () => {
-    const config = await clash.config();
-    const rules = await clash.getRules();
-    const proxies = await clash.getProxies();
-    const ruleProviders = await clash.getRuleProviders();
-    const proxyProviders = await clash.getProxyProviders();
-    setRules(rules);
-    setConfig(config);
-    setRuleProviders(ruleProviders);
-    setProxyProviders(proxyProviders);
-    setProxies(getProxiesFromRules(rules, proxies));
-  };
-
-  const testLatency = async proxy => {
-    for (const name of proxy.all) {
-      const latency = await clash.delay(name);
-      console.log(name, latency);
-      setProxyLatencies(proxyLatencies => {
-        return { ...proxyLatencies, [name]: latency };
-      });
-    }
-  };
-
-  const setMode = mode => {
-    return async () => {
-      await clash.setConfig({ mode });
-      await load();
-    }
-  };
-
+  const [route, setRoute] = useState(read);
   useEffect(() => {
-    load();
-    getTraffic();
-    setInterval(load, 1000 * 30);
+    const changed = () => setRoute(read());
+    addEventListener('hashchange', changed);
+    if (!location.hash) location.hash = '#overview';
+    return () => removeEventListener('hashchange', changed);
   }, []);
-
-  return [
-    h(Panel, { header: h('h2', null, "Clash") }, [
-      h(List, {}, [
-        h(ListItem, null, [
-          "Traffic",
-          h('div', null, [
-            h('span', null, bit2Human(traffic.up) + 'ps'),
-            h('span', null, " / "),
-            h('span', null, bit2Human(traffic.down) + 'ps'),
-          ]),
-        ]),
-        h(ListItem, null, [
-          "Mode",
-          h('div', { className: 'button-group' }, [
-            h('button', { className: cls({ active: config.mode == 'direct' }), onClick: setMode('direct') }, "direct"),
-            h('button', { className: cls({ active: config.mode == 'rule' }), onClick: setMode('rule') }, "rule"),
-            h('button', { className: cls({ active: config.mode == 'global' }), onClick: setMode('global') }, "global"),
-          ]),
-        ]),
-      ]),
-    ]),
-
-    h(Panel, { header: h('h2', null, "Rules") },
-      h(List, null, rules.map(rule => h(ListItem, null, [
-        h('div', { className: 'flex-y' }, [
-          h('span', null, rule.type),
-          h('a', { href: rule.type === 'RuleSet' ? `#rs-${rule.payload}` : null }, rule.payload),
-        ]),
-        h('a', { href: `#p-${rule.proxy}` }, rule.proxy),
-      ]))),
-    ),
-    h('h2', null, "Proxies"),
-    proxies.map(proxy =>
-      h(Panel, {
-        id: `p-${proxy.name}`,
-        title: proxy.name,
-        header: h('button', { onClick: () => testLatency(proxy) }, "⚡️"),
-      }, [
-        h(List, {}, proxy.proxies.map(p =>
-          h(ListItem, { className: cls({ 'active': proxy.now == p.name }) }, [
-            h('div', { className: 'flex-y' }, [
-              h('span', null, p.name),
-              h('span', { className: 'color-999' }, p.type),
-            ]),
-            h('span', {
-              style: {
-                color: delayColor(proxyLatencies[p.name] || last(p.history)?.delay),
-              },
-            }, `${proxyLatencies[p.name] || last(p.history)?.delay}ms`),
-          ])
-        )),
-      ])
-    ),
-    h(Panel, { header: h('h2', null, "Rule Providers") }, [
-      h(List, {}, ruleProviders.map(provider =>
-        h(ListItem, { id: `rs-${provider.name}` }, [
-          h('div', { className: 'flex-y' }, [
-            h('span', null, provider.name),
-            h('span', { className: 'color-999' }, `${provider.behavior} / ${provider.vehicleType}`),
-          ]),
-          h('div', { className: 'flex-y text-right' }, [
-            h('span', { className: 'color-green' }, provider.ruleCount),
-            h('span', { className: 'text-muted color-999' }, provider.updatedAt),
-          ])
-        ])
-      )),
-    ]),
-
-    h('h2', null, "Proxy Providers"),
-    proxyProviders.map(provider =>
-      h(Panel, {
-        title: provider.name,
-        header: h('div', null, [
-          h('button', { onClick: () => testLatency(provider) }, "⚡️"),
-          h('button', {}, "♻️"),
-        ])
-      }, [
-        h(List, {}, provider.proxies.map(p =>
-          h(ListItem, { className: cls({ 'active': provider.now == p.name }) }, [
-            h('div', { className: 'flex-y' }, [
-              h('span', null, p.name),
-              h('span', { className: 'color-999' }, p.type),
-            ]),
-            h('span', {
-              style: {
-                color: delayColor(p.latency),
-              },
-            }, `${p.history[0]?.delay}ms`),
-          ])
-        )),
-      ])
-    ),
-
-  ]
+  return route;
 }
 
-ready(() => {
-  const app = document.getElementById('app');
-  render(h(App), app);
-});
+function useSocket(clash, path, initial) {
+  const [data, setData] = useState(initial);
+  const [online, setOnline] = useState(false);
+  useEffect(() => {
+    let close;
+    let timer;
+    let stopped = false;
+    const connect = () => {
+      close = clash.socket(path, value => {
+        setOnline(true);
+        setData(value);
+      }, () => {
+        setOnline(false);
+        if (!stopped) timer = setTimeout(connect, 2000);
+      });
+    };
+    connect();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      close?.();
+    };
+  }, [clash, path]);
+  return [data, online];
+}
+
+const Notice = ({ error }) => error ? html`<p class="error">${error.message || String(error)}</p>` : null;
+const Stat = ({ label, value, detail }) => html`
+  <article class="stat"><small>${label}</small><strong>${value}</strong>${detail && html`<small>${detail}</small>`}</article>
+`;
+const Delay = ({ value }) => {
+  if (!value) return html`<span class="muted">—</span>`;
+  const level = value < 300 ? 'good' : value < 1000 ? 'warn' : 'bad';
+  return html`<span class=${level}>${value} ms</span>`;
+};
+
+function Overview({ clash, config, setConfig, version, traffic, connections, online }) {
+  const setMode = async mode => {
+    await clash.setConfig({ mode });
+    setConfig({ ...config, mode });
+  };
+  return html`
+    <section>
+      <header class="section-head">
+        <div><h2>Overview</h2><p>Mihomo ${version?.version || '—'} · ${online ? 'connected' : 'connecting…'}</p></div>
+        <div class="segmented">${['direct', 'rule', 'global'].map(mode => html`
+          <button class=${config.mode === mode ? 'active' : ''} onClick=${() => setMode(mode)}>${mode}</button>
+        `)}</div>
+      </header>
+      <div class="stats">
+        <${Stat} label="Upload" value=${rate(traffic.up)} detail=${`Total ${bytes(traffic.upTotal ?? connections.uploadTotal)}`} />
+        <${Stat} label="Download" value=${rate(traffic.down)} detail=${`Total ${bytes(traffic.downTotal ?? connections.downloadTotal)}`} />
+        <${Stat} label="Memory" value=${bytes(connections.memory)} />
+        <${Stat} label="Connections" value=${connections.connections?.length || 0} />
+      </div>
+      <article>
+        <h3>Runtime</h3>
+        <dl class="details">
+          <div><dt>Mode</dt><dd>${config.mode || '—'}</dd></div>
+          <div><dt>Mixed port</dt><dd>${config['mixed-port'] || '—'}</dd></div>
+          <div><dt>IPv6</dt><dd>${String(config.ipv6 ?? '—')}</dd></div>
+          <div><dt>Allow LAN</dt><dd>${String(config['allow-lan'] ?? '—')}</dd></div>
+          <div><dt>TUN</dt><dd>${String(config.tun?.enable ?? '—')}</dd></div>
+          <div><dt>Log level</dt><dd>${config['log-level'] || '—'}</dd></div>
+        </dl>
+      </article>
+      <p class="muted">The controller exposes memory but no stable CPU usage metric, so CPU is intentionally omitted.</p>
+    </section>
+  `;
+}
+
+function Proxies({ clash }) {
+  const [proxies, setProxies] = useState([]);
+  const [proxyProviders, setProxyProviders] = useState([]);
+  const [ruleProviders, setRuleProviders] = useState([]);
+  const [latency, setLatency] = useState({});
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState(null);
+
+  const load = async () => {
+    try {
+      const [nextProxies, nextProxyProviders, nextRuleProviders] = await Promise.all([
+        clash.getProxies(), clash.getProxyProviders(), clash.getRuleProviders(),
+      ]);
+      setProxies(nextProxies);
+      setProxyProviders(nextProxyProviders);
+      setRuleProviders(nextRuleProviders);
+      setError(null);
+    } catch (e) {
+      setError(e);
+    }
+  };
+  useEffect(() => { load(); }, [clash]);
+
+  const groups = proxies.filter(proxy => Array.isArray(proxy.all));
+  const test = async group => {
+    setBusy(`group:${group.name}`);
+    for (const name of group.all) {
+      try {
+        const value = await clash.delay(name);
+        setLatency(current => ({ ...current, [name]: value }));
+      } catch {
+        setLatency(current => ({ ...current, [name]: 0 }));
+      }
+    }
+    setBusy('');
+  };
+  const choose = async (group, name) => {
+    if (group.type !== 'Selector') return;
+    await clash.switchProxy(group.name, name);
+    await load();
+  };
+  const action = async (key, fn) => {
+    setBusy(key);
+    try {
+      await fn();
+      setTimeout(load, 500);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  return html`
+    <section>
+      <header class="section-head">
+        <div><h2>Proxies</h2><p>${groups.length} groups · ${proxyProviders.length} proxy providers</p></div>
+        <button onClick=${load}>Refresh</button>
+      </header>
+      <${Notice} error=${error} />
+
+      ${groups.map(group => html`
+        <article>
+          <header class="row">
+            <div><h3>${group.name}</h3><small>${group.type} · selected: ${group.now || 'automatic'}</small></div>
+            <button disabled=${busy === `group:${group.name}`} onClick=${() => test(group)}>
+              ${busy === `group:${group.name}` ? 'Testing…' : 'Test all'}
+            </button>
+          </header>
+          <div class="proxy-list">${group.all.map(name => {
+            const proxy = proxies.find(item => item.name === name);
+            const value = latency[name] ?? proxy?.history?.at(-1)?.delay;
+            return html`
+              <button class=${`proxy ${group.now === name ? 'selected' : ''}`}
+                onClick=${() => choose(group, name)} title=${proxy?.type || ''}>
+                <span>${name}</span><${Delay} value=${value} />
+              </button>
+            `;
+          })}</div>
+        </article>
+      `)}
+
+      <header class="section-head providers-head">
+        <div><h2>Providers</h2><p>Refresh subscriptions and run provider health checks</p></div>
+      </header>
+
+      <h3>Proxy Providers</h3>
+      <div class="stack">${proxyProviders.map(provider => html`
+        <article>
+          <header class="row">
+            <div>
+              <strong>${provider.name}</strong>
+              <div><small>${provider.vehicleType || provider.type} · ${provider.proxies?.length || 0} proxies</small></div>
+              <small>updated ${ago(provider.updatedAt)}</small>
+            </div>
+            <div class="actions">
+              <button disabled=${busy === `provider:${provider.name}`}
+                onClick=${() => action(`provider:${provider.name}`, () => clash.updateProxyProvider(provider.name))}>Refresh</button>
+              <button disabled=${busy === `health:${provider.name}`}
+                onClick=${() => action(`health:${provider.name}`, () => clash.healthcheckProxyProvider(provider.name))}>Test</button>
+            </div>
+          </header>
+        </article>
+      `)}</div>
+
+      <h3>Rule Providers</h3>
+      <div class="stack">${ruleProviders.map(provider => html`
+        <article>
+          <header class="row">
+            <div>
+              <strong>${provider.name}</strong>
+              <div><small>${provider.behavior || ''} · ${provider.ruleCount ?? '—'} rules</small></div>
+              <small>updated ${ago(provider.updatedAt)}</small>
+            </div>
+            <button disabled=${busy === `rules:${provider.name}`}
+              onClick=${() => action(`rules:${provider.name}`, () => clash.updateRuleProvider(provider.name))}>Refresh</button>
+          </header>
+        </article>
+      `)}</div>
+    </section>
+  `;
+}
+
+function Rules({ clash }) {
+  const [rules, setRules] = useState([]);
+  const [providers, setProviders] = useState([]);
+  const [query, setQuery] = useState('');
+  const [error, setError] = useState(null);
+
+  const load = async () => {
+    try {
+      const [nextRules, nextProviders] = await Promise.all([clash.getRules(), clash.getRuleProviders()]);
+      setRules(nextRules);
+      setProviders(nextProviders);
+      setError(null);
+    } catch (e) {
+      setError(e);
+    }
+  };
+  useEffect(() => { load(); }, [clash]);
+
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase();
+    return q ? rules.filter(rule => [rule.type, rule.payload, rule.proxy].some(value =>
+      String(value || '').toLowerCase().includes(q))) : rules;
+  }, [rules, query]);
+
+  const toggle = async rule => {
+    const disabled = !rule.extra?.disabled;
+    await clash.setRuleDisabled(rule.index, disabled);
+    setRules(current => current.map(item => item.index === rule.index
+      ? { ...item, extra: { ...item.extra, disabled } } : item));
+  };
+  const refreshProviders = async () => {
+    await Promise.all(providers.map(provider => clash.updateRuleProvider(provider.name)));
+    setTimeout(load, 500);
+  };
+
+  return html`
+    <section>
+      <header class="section-head">
+        <div><h2>Rules</h2><p>${rules.length} rules · ${providers.length} providers</p></div>
+        <div class="actions"><button disabled=${!providers.length} onClick=${refreshProviders}>Refresh providers</button><button onClick=${load}>Reload</button></div>
+      </header>
+      <${Notice} error=${error} />
+      <input class="wide" value=${query} onInput=${e => setQuery(e.currentTarget.value)} placeholder="Filter rules…" />
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Type</th><th>Payload</th><th>Target</th><th>Hits</th><th></th></tr></thead>
+        <tbody>${filtered.map(rule => html`
+          <tr class=${rule.extra?.disabled ? 'disabled' : ''}>
+            <td>${rule.index}</td><td>${rule.type}</td><td class="break">${rule.payload || '—'}</td>
+            <td>${rule.proxy}</td><td>${rule.extra?.hitCount ?? '—'}</td>
+            <td><button onClick=${() => toggle(rule)}>${rule.extra?.disabled ? 'Enable' : 'Disable'}</button></td>
+          </tr>
+        `)}</tbody>
+      </table></div>
+    </section>
+  `;
+}
+
+function Connections({ clash, snapshot }) {
+  const [query, setQuery] = useState('');
+  const list = useMemo(() => {
+    const q = query.toLowerCase();
+    const all = [...(snapshot.connections || [])].sort((a, b) => (b.download + b.upload) - (a.download + a.upload));
+    if (!q) return all;
+    return all.filter(connection => {
+      const meta = connection.metadata || {};
+      return [target(meta), meta.process, meta.sourceIP, meta.destinationIP, connection.rule,
+        connection.rulePayload, ...(connection.chains || [])]
+        .some(value => String(value || '').toLowerCase().includes(q));
+    });
+  }, [snapshot, query]);
+
+  return html`
+    <section>
+      <header class="section-head">
+        <div><h2>Connections</h2><p>${snapshot.connections?.length || 0} active · ↑ ${bytes(snapshot.uploadTotal)} · ↓ ${bytes(snapshot.downloadTotal)}</p></div>
+        <button class="danger" disabled=${!snapshot.connections?.length} onClick=${() => clash.closeAllConnections()}>Kill all</button>
+      </header>
+      <input class="wide" value=${query} onInput=${e => setQuery(e.currentTarget.value)} placeholder="Filter host, process, rule, chain…" />
+      <div class="stack">${list.map(connection => {
+        const meta = connection.metadata || {};
+        return html`
+          <article class="connection">
+            <header class="row">
+              <div class="grow">
+                <strong>${target(meta)}${meta.destinationPort ? `:${meta.destinationPort}` : ''}</strong>
+                <div><small>${meta.process || meta.type || 'unknown'} · ${meta.network || ''} · ${connection.rule || '—'} ${connection.rulePayload || ''}</small></div>
+                <div><small>${(connection.chains || []).join(' → ') || 'DIRECT'}</small></div>
+              </div>
+              <button class="danger" onClick=${() => clash.closeConnection(connection.id)}>Kill</button>
+            </header>
+            <small>↑ ${bytes(connection.upload)} · ↓ ${bytes(connection.download)} · since ${ago(connection.start)}</small>
+          </article>
+        `;
+      })}</div>
+    </section>
+  `;
+}
+
+function Settings({ value, onSave }) {
+  const [api, setApi] = useState(value.api);
+  const [secret, setSecret] = useState(value.secret);
+  const submit = event => {
+    event.preventDefault();
+    onSave({ api: api.trim().replace(/\/$/, ''), secret });
+  };
+  return html`
+    <section>
+      <h2>Controller</h2>
+      <p>Endpoint and secret are stored only in this browser's localStorage.</p>
+      <form class="settings" onSubmit=${submit}>
+        <label>API endpoint<input value=${api} onInput=${e => setApi(e.currentTarget.value)} placeholder="http://127.0.0.1:9090" /></label>
+        <label>Secret<input type="password" value=${secret} onInput=${e => setSecret(e.currentTarget.value)} autocomplete="current-password" /></label>
+        <button type="submit">Save & reconnect</button>
+      </form>
+    </section>
+  `;
+}
+
+function App() {
+  const route = useRoute();
+  const [controller, setController] = useState(() => {
+    try {
+      return { ...defaults, ...JSON.parse(localStorage.getItem(storageKey) || '{}') };
+    } catch {
+      return defaults;
+    }
+  });
+  const clash = useMemo(() => new Clash(controller), [controller.api, controller.secret]);
+  const [config, setConfig] = useState({});
+  const [version, setVersion] = useState(null);
+  const [error, setError] = useState(null);
+  const [traffic, trafficOnline] = useSocket(clash, '/traffic', { up: 0, down: 0, upTotal: 0, downTotal: 0 });
+  const [connections, connectionsOnline] = useSocket(clash, '/connections?interval=1000', {
+    uploadTotal: 0, downloadTotal: 0, memory: 0, connections: [],
+  });
+
+  useEffect(() => {
+    Promise.all([clash.getConfig(), clash.getVersion()])
+      .then(([nextConfig, nextVersion]) => {
+        setConfig(nextConfig);
+        setVersion(nextVersion);
+        setError(null);
+      })
+      .catch(setError);
+  }, [clash]);
+
+  const save = value => {
+    localStorage.setItem(storageKey, JSON.stringify(value));
+    setController(value);
+    location.hash = '#overview';
+  };
+
+  const pages = {
+    overview: html`<${Overview} clash=${clash} config=${config} setConfig=${setConfig} version=${version}
+      traffic=${traffic} connections=${connections} online=${trafficOnline && connectionsOnline} />`,
+    proxies: html`<${Proxies} clash=${clash} />`,
+    rules: html`<${Rules} clash=${clash} />`,
+    connections: html`<${Connections} clash=${clash} snapshot=${connections} />`,
+    settings: html`<${Settings} value=${controller} onSave=${save} />`,
+  };
+
+  return html`
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="#overview"><strong>Clash</strong></a>
+        <nav class="tabs">${tabs.map(tab => html`<a class=${route === tab ? 'active' : ''} href=${`#${tab}`}>${tab}</a>`)}</nav>
+      </header>
+      <main><${Notice} error=${error} />${pages[route]}</main>
+    </div>
+  `;
+}
+
+render(html`<${App} />`, document.getElementById('app'));
