@@ -69,18 +69,11 @@ const Delay = ({ value }) => {
   return html`<span class=${level}>${value} ms</span>`;
 };
 
-function Overview({ clash, config, setConfig, version, traffic, connections, online }) {
-  const setMode = async mode => {
-    await clash.setConfig({ mode });
-    setConfig({ ...config, mode });
-  };
+function Overview({ version, traffic, connections, online }) {
   return html`
     <section>
       <header class="section-head">
         <div><h2>Overview</h2><p>Mihomo ${version?.version || '—'} · ${online ? 'connected' : 'connecting…'}</p></div>
-        <div class="segmented">${['direct', 'rule', 'global'].map(mode => html`
-          <button class=${config.mode === mode ? 'active' : ''} onClick=${() => setMode(mode)}>${mode}</button>
-        `)}</div>
       </header>
       <div class="stats">
         <${Stat} label="Upload" value=${rate(traffic.up)} detail=${`Total ${bytes(traffic.upTotal ?? connections.uploadTotal)}`} />
@@ -88,17 +81,6 @@ function Overview({ clash, config, setConfig, version, traffic, connections, onl
         <${Stat} label="Memory" value=${bytes(connections.memory)} />
         <${Stat} label="Connections" value=${connections.connections?.length || 0} />
       </div>
-      <article>
-        <h3>Runtime</h3>
-        <dl class="details">
-          <div><dt>Mode</dt><dd>${config.mode || '—'}</dd></div>
-          <div><dt>Mixed port</dt><dd>${config['mixed-port'] || '—'}</dd></div>
-          <div><dt>IPv6</dt><dd>${String(config.ipv6 ?? '—')}</dd></div>
-          <div><dt>Allow LAN</dt><dd>${String(config['allow-lan'] ?? '—')}</dd></div>
-          <div><dt>TUN</dt><dd>${String(config.tun?.enable ?? '—')}</dd></div>
-          <div><dt>Log level</dt><dd>${config['log-level'] || '—'}</dd></div>
-        </dl>
-      </article>
       <p class="muted">The controller exposes memory but no stable CPU usage metric, so CPU is intentionally omitted.</p>
     </section>
   `;
@@ -107,19 +89,19 @@ function Overview({ clash, config, setConfig, version, traffic, connections, onl
 function Proxies({ clash }) {
   const [proxies, setProxies] = useState([]);
   const [proxyProviders, setProxyProviders] = useState([]);
-  const [ruleProviders, setRuleProviders] = useState([]);
   const [latency, setLatency] = useState({});
   const [busy, setBusy] = useState('');
   const [error, setError] = useState(null);
 
   const load = async () => {
     try {
-      const [nextProxies, nextProxyProviders, nextRuleProviders] = await Promise.all([
-        clash.getProxies(), clash.getProxyProviders(), clash.getRuleProviders(),
+      const [nextProxies, nextProxyProviders] = await Promise.all([
+        clash.getProxies(), clash.getProxyProviders(),
       ]);
       setProxies(nextProxies);
-      setProxyProviders(nextProxyProviders);
-      setRuleProviders(nextRuleProviders);
+      setProxyProviders(nextProxyProviders.filter(provider =>
+        String(provider.vehicleType || '').toLowerCase() === 'http'
+      ));
       setError(null);
     } catch (e) {
       setError(e);
@@ -158,7 +140,7 @@ function Proxies({ clash }) {
   return html`
     <section>
       <header class="section-head">
-        <div><h2>Proxies</h2><p>${groups.length} groups · ${proxyProviders.length} proxy providers</p></div>
+        <div><h2>Proxies</h2><p>${groups.length} groups · ${proxyProviders.length} subscription providers</p></div>
         <button onClick=${load}>Refresh</button>
       </header>
       <${Notice} error=${error} />
@@ -185,16 +167,14 @@ function Proxies({ clash }) {
       `)}
 
       <header class="section-head providers-head">
-        <div><h2>Providers</h2><p>Refresh subscriptions and run provider health checks</p></div>
+        <div><h2>Proxy Providers</h2><p>HTTP subscription providers only</p></div>
       </header>
-
-      <h3>Proxy Providers</h3>
       <div class="stack">${proxyProviders.map(provider => html`
         <article>
           <header class="row">
             <div>
               <strong>${provider.name}</strong>
-              <div><small>${provider.vehicleType || provider.type} · ${provider.proxies?.length || 0} proxies</small></div>
+              <div><small>${provider.proxies?.length || 0} proxies</small></div>
               <small>updated ${ago(provider.updatedAt)}</small>
             </div>
             <div class="actions">
@@ -206,21 +186,6 @@ function Proxies({ clash }) {
           </header>
         </article>
       `)}</div>
-
-      <h3>Rule Providers</h3>
-      <div class="stack">${ruleProviders.map(provider => html`
-        <article>
-          <header class="row">
-            <div>
-              <strong>${provider.name}</strong>
-              <div><small>${provider.behavior || ''} · ${provider.ruleCount ?? '—'} rules</small></div>
-              <small>updated ${ago(provider.updatedAt)}</small>
-            </div>
-            <button disabled=${busy === `rules:${provider.name}`}
-              onClick=${() => action(`rules:${provider.name}`, () => clash.updateRuleProvider(provider.name))}>Refresh</button>
-          </header>
-        </article>
-      `)}</div>
     </section>
   `;
 }
@@ -229,6 +194,7 @@ function Rules({ clash }) {
   const [rules, setRules] = useState([]);
   const [providers, setProviders] = useState([]);
   const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState('');
   const [error, setError] = useState(null);
 
   const load = async () => {
@@ -255,16 +221,22 @@ function Rules({ clash }) {
     setRules(current => current.map(item => item.index === rule.index
       ? { ...item, extra: { ...item.extra, disabled } } : item));
   };
-  const refreshProviders = async () => {
-    await Promise.all(providers.map(provider => clash.updateRuleProvider(provider.name)));
-    setTimeout(load, 500);
+
+  const refreshProvider = async provider => {
+    setBusy(provider.name);
+    try {
+      await clash.updateRuleProvider(provider.name);
+      setTimeout(load, 500);
+    } finally {
+      setBusy('');
+    }
   };
 
   return html`
     <section>
       <header class="section-head">
-        <div><h2>Rules</h2><p>${rules.length} rules · ${providers.length} providers</p></div>
-        <div class="actions"><button disabled=${!providers.length} onClick=${refreshProviders}>Refresh providers</button><button onClick=${load}>Reload</button></div>
+        <div><h2>Rules</h2><p>${rules.length} parsed rules</p></div>
+        <button onClick=${load}>Reload</button>
       </header>
       <${Notice} error=${error} />
       <input class="wide" value=${query} onInput=${e => setQuery(e.currentTarget.value)} placeholder="Filter rules…" />
@@ -278,6 +250,24 @@ function Rules({ clash }) {
           </tr>
         `)}</tbody>
       </table></div>
+
+      <header class="section-head providers-head">
+        <div><h2>Rule Providers</h2><p>${providers.length} rule sets</p></div>
+      </header>
+      <div class="stack">${providers.map(provider => html`
+        <article>
+          <header class="row">
+            <div>
+              <strong>${provider.name}</strong>
+              <div><small>${provider.behavior || ''} · ${provider.ruleCount ?? '—'} rules</small></div>
+              <small>updated ${ago(provider.updatedAt)}</small>
+            </div>
+            <button disabled=${busy === provider.name} onClick=${() => refreshProvider(provider)}>
+              ${busy === provider.name ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </header>
+        </article>
+      `)}</div>
     </section>
   `;
 }
@@ -323,22 +313,48 @@ function Connections({ clash, snapshot }) {
   `;
 }
 
-function Settings({ value, onSave }) {
+function Settings({ clash, config, setConfig, value, onSave }) {
   const [api, setApi] = useState(value.api);
   const [secret, setSecret] = useState(value.secret);
+
   const submit = event => {
     event.preventDefault();
     onSave({ api: api.trim().replace(/\/$/, ''), secret });
   };
+  const setMode = async mode => {
+    await clash.setConfig({ mode });
+    setConfig({ ...config, mode });
+  };
+
   return html`
     <section>
-      <h2>Controller</h2>
-      <p>Endpoint and secret are stored only in this browser's localStorage.</p>
-      <form class="settings" onSubmit=${submit}>
-        <label>API endpoint<input value=${api} onInput=${e => setApi(e.currentTarget.value)} placeholder="http://127.0.0.1:9090" /></label>
-        <label>Secret<input type="password" value=${secret} onInput=${e => setSecret(e.currentTarget.value)} autocomplete="current-password" /></label>
-        <button type="submit">Save & reconnect</button>
-      </form>
+      <h2>Settings</h2>
+
+      <article>
+        <header class="row">
+          <div><h3>Mihomo</h3><small>Runtime configuration</small></div>
+          <div class="segmented">${['direct', 'rule', 'global'].map(mode => html`
+            <button class=${config.mode === mode ? 'active' : ''} onClick=${() => setMode(mode)}>${mode}</button>
+          `)}</div>
+        </header>
+        <dl class="details">
+          <div><dt>Mixed port</dt><dd>${config['mixed-port'] || '—'}</dd></div>
+          <div><dt>IPv6</dt><dd>${String(config.ipv6 ?? '—')}</dd></div>
+          <div><dt>Allow LAN</dt><dd>${String(config['allow-lan'] ?? '—')}</dd></div>
+          <div><dt>TUN</dt><dd>${String(config.tun?.enable ?? '—')}</dd></div>
+          <div><dt>Log level</dt><dd>${config['log-level'] || '—'}</dd></div>
+        </dl>
+      </article>
+
+      <article>
+        <h3>Controller</h3>
+        <p>Endpoint and secret are stored only in this browser's localStorage.</p>
+        <form class="settings" onSubmit=${submit}>
+          <label>API endpoint<input value=${api} onInput=${e => setApi(e.currentTarget.value)} placeholder="http://127.0.0.1:9090" /></label>
+          <label>Secret<input type="password" value=${secret} onInput=${e => setSecret(e.currentTarget.value)} autocomplete="current-password" /></label>
+          <button type="submit">Save & reconnect</button>
+        </form>
+      </article>
     </section>
   `;
 }
@@ -378,12 +394,11 @@ function App() {
   };
 
   const pages = {
-    overview: html`<${Overview} clash=${clash} config=${config} setConfig=${setConfig} version=${version}
-      traffic=${traffic} connections=${connections} online=${trafficOnline && connectionsOnline} />`,
+    overview: html`<${Overview} version=${version} traffic=${traffic} connections=${connections} online=${trafficOnline && connectionsOnline} />`,
     proxies: html`<${Proxies} clash=${clash} />`,
     rules: html`<${Rules} clash=${clash} />`,
     connections: html`<${Connections} clash=${clash} snapshot=${connections} />`,
-    settings: html`<${Settings} value=${controller} onSave=${save} />`,
+    settings: html`<${Settings} clash=${clash} config=${config} setConfig=${setConfig} value=${controller} onSave=${save} />`,
   };
 
   return html`
