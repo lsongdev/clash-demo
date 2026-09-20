@@ -43,7 +43,8 @@ export class Clash {
         onError?.(error);
       }
     };
-    ws.onerror = event => onError?.(event);
+    ws.onerror = () => ws.close();
+    ws.onclose = event => onError?.(event);
     return () => ws.close();
   }
 
