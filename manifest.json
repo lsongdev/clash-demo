@@ -1,12 +1,11 @@
 {
-  "name": "Liu Song’s Web",
-  "short_name": "Lsong’s Web",
-  "description": "homepage, blog, music and etc.",
-  "id": "?id=page",
-  "start_url": ".",
+  "name": "Clash Dashboard",
+  "short_name": "Clash",
+  "description": "A small no-build Mihomo dashboard",
+  "start_url": ".#overview",
   "display": "standalone",
-  "theme_color": "#000",
-  "background_color": "#efefef",
+  "theme_color": "#ffffff",
+  "background_color": "#ffffff",
   "icons": [
     {
       "src": "https://lsong.org/icon-x128.png",
@@ -22,9 +21,7 @@
     }
   ],
   "categories": [
-    "web",
-    "music",
-    "books",
-    "education"
+    "utilities",
+    "productivity"
   ]
 }
