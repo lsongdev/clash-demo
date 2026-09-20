@@ -1,138 +1,123 @@
-import { connect } from 'https://lsong.org/scripts/websocket.js';
-import { parseJSONLines } from 'https://lsong.org/scripts/stream.js';
+const encode = encodeURIComponent;
 
-/**
- * Clash API
- * @docs https://clash.gitbook.io/doc/
- * @param {*} param0 
- */
 export class Clash {
-  constructor({ api, secret }) {
-    this.api = api;
+  constructor({ api, secret = '' }) {
+    this.api = api.replace(/\/$/, '');
     this.secret = secret;
   }
-  request(method, path, body) {
-    const { api, secret } = this;
-    const headers = {
-      'Content-Type': 'application/json'
+
+  headers() {
+    return {
+      'Content-Type': 'application/json',
+      ...(this.secret ? { Authorization: `Bearer ${this.secret}` } : {}),
     };
-    if (secret) {
-      headers['Authorization'] = `Bearer ${secret}`;
-    }
-    return fetch(api + path, {
+  }
+
+  async request(method, path, body) {
+    const response = await fetch(this.api + path, {
       method,
-      headers,
-      body: body && JSON.stringify(body),
-    })
-  }
-  /**
-   * @docs https://clash.gitbook.io/doc/restful-api/common#获得当前的流量
-   * @param {*} cb 
-   */
-  async *traffic() {
-    const ws = connect(`${this.api}/traffic?token=${this.secret}`);
-    const reader = await ws.getReader();
-    for await (const line of parseJSONLines(reader)) {
-      yield line;
+      headers: this.headers(),
+      body: body == null ? undefined : JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`${method} ${path}: ${response.status} ${text || response.statusText}`);
     }
+    return response;
   }
-  /**
-   * @docs https://clash.gitbook.io/doc/restful-api/common#获得实时日志
-   * @param {*} level 
-   * @param {*} cb 
-   */
-  logs(level) {
-    return this.request('get', `/logs?level=${level}`);
+
+  async json(path) {
+    return (await this.request('GET', path)).json();
   }
-  /**
-   * @docs https://clash.gitbook.io/doc/restful-api/proxies#获取单个代理信息
-   * @param {*} name 
-   */
-  async proxy(name) {
-    const response = await this.request('get', `/proxies/${name}`);
-    const proxy = await response.json();
-    return proxy;
+
+  socket(path, onMessage, onError) {
+    const url = new URL(this.api + path);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    if (this.secret) url.searchParams.set('token', this.secret);
+
+    const ws = new WebSocket(url);
+    ws.onmessage = event => {
+      try {
+        onMessage(JSON.parse(event.data));
+      } catch (error) {
+        onError?.(error);
+      }
+    };
+    ws.onerror = event => onError?.(event);
+    return () => ws.close();
   }
-  /**
-   * @docs https://clash.gitbook.io/doc/restful-api/proxies#获取单个代理的延迟
-   * @param {*} name 
-   * @param {*} url 
-   * @param {*} timeout 
-   */
-  async delay(name, url = 'http://www.gstatic.com/generate_204', timeout = 5000) {
-    const response = await this.request('get', `/proxies/${name}/delay?url=${url}&timeout=${timeout}`);
-    const data = await response.json();
+
+  getConfig() {
+    return this.json('/configs');
+  }
+
+  async setConfig(config) {
+    return (await this.request('PATCH', '/configs', config)).status === 204;
+  }
+
+  getVersion() {
+    return this.json('/version');
+  }
+
+  async getProxies() {
+    const { proxies } = await this.json('/proxies');
+    return Object.entries(proxies).map(([name, proxy]) => ({ name, ...proxy }));
+  }
+
+  proxy(name) {
+    return this.json(`/proxies/${encode(name)}`);
+  }
+
+  async switchProxy(group, name) {
+    return (await this.request('PUT', `/proxies/${encode(group)}`, { name })).status === 204;
+  }
+
+  async delay(name, url = 'https://www.gstatic.com/generate_204', timeout = 5000) {
+    const params = new URLSearchParams({ url, timeout });
+    const data = await this.json(`/proxies/${encode(name)}/delay?${params}`);
     return data.delay || 0;
   }
-  /**
-   * @docs https://clash.gitbook.io/doc/restful-api/proxies#切换Selector中选中的代理
-   * @param {*} selector 
-   * @param {*} name 
-   */
-  async switch(selector, name) {
-    const response = await this.request('put', `/proxies/${selector}`, { name })
-    return response.status === 204;
-  }
-  /**
-   * rules
-   * @docs https://clash.gitbook.io/doc/restful-api/config#获取所有已经解析的规则
-   */
-  async getRules() {
-    const response = await this.request('get', '/rules');
-    const data = await response.json();
-    return data.rules;
-  }
-  async getRuleProviders() {
-    const response = await this.request('get', '/providers/rules');
-    const data = await response.json();
-    return Object.values(data.providers);
-  }
-  /**
-   * @docs https://clash.gitbook.io/doc/restful-api/proxies#获取所有代理
-   */
-  async getProxies() {
-    const response = await this.request('get', `/proxies`);
-    const data = await response.json();
-    return Object.entries(data.proxies).map(([name, proxy]) => {
-      proxy.name = name;
-      return proxy;
-    });
-  }
+
   async getProxyProviders() {
-    const response = await this.request('get', `/providers/proxies`);
-    const data = await response.json();
-    return Object.values(data.providers);
+    const { providers } = await this.json('/providers/proxies');
+    return Object.values(providers);
   }
-  async setConfig(conf) {
-    const response = await this.request('PATCH', '/configs', conf);
-    return response.status === 204;
-  }
-  /**
-   * https://clash.gitbook.io/doc/restful-api/config#获得当前的基础设置
-   */
-  async getConfig() {
-    const response = await this.request('get', '/configs');
-    const configs = await response.json();
-    return configs;
-  }
-  async getMode() {
-    const conf = await this.getConfig();
-    return conf.mode;
-  }
-  async setMode(mode) {
-    const response = await this.request('PATCH', '/configs', { mode });
-    return response.status === 204;
-  }
-  async config(conf) {
-    if (conf) return this.setConfig(conf);
-    return this.getConfig();
-  }
-  async mode(mode) {
-    if (mode) return this.setMode(mode);
-    return this.getMode();
-  }
+
   async updateProxyProvider(name) {
-    const response = await this.request('put', `/providers/proxies/${name}`);
-    return response.status === 204;
+    return (await this.request('PUT', `/providers/proxies/${encode(name)}`)).status === 204;
+  }
+
+  async healthcheckProxyProvider(name) {
+    return (await this.request('GET', `/providers/proxies/${encode(name)}/healthcheck`)).status === 204;
+  }
+
+  async getRules() {
+    const { rules } = await this.json('/rules');
+    return rules;
+  }
+
+  async setRuleDisabled(index, disabled) {
+    return (await this.request('PATCH', '/rules/disable', { [index]: disabled })).status === 204;
+  }
+
+  async getRuleProviders() {
+    const { providers } = await this.json('/providers/rules');
+    return Object.values(providers);
+  }
+
+  async updateRuleProvider(name) {
+    return (await this.request('PUT', `/providers/rules/${encode(name)}`)).status === 204;
+  }
+
+  getConnections() {
+    return this.json('/connections');
+  }
+
+  async closeConnection(id) {
+    return (await this.request('DELETE', `/connections/${encode(id)}`)).status === 204;
+  }
+
+  async closeAllConnections() {
+    return (await this.request('DELETE', '/connections')).status === 204;
   }
 }
