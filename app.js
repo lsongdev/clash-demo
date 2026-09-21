@@ -45,7 +45,9 @@ const subscription = info => {
   const total = Number(info.Total ?? info.total) || 0;
   const expire = info.Expire ?? info.expire;
   const used = upload + download;
-  return { used, total, remaining: Math.max(0, total - used), percent: total ? Math.min(100, used / total * 100) : 0, expire: expiry(expire) };
+  const expiresAt = expiry(expire);
+  if (!used && !total && !expiresAt) return null;
+  return { used, total, remaining: Math.max(0, total - used), percent: total ? Math.min(100, used / total * 100) : 0, expire: expiresAt };
 };
 const chartPoints = (values, max) => {
   if (!values.length) return '';
@@ -123,10 +125,10 @@ function Subscription({ info }) {
   if (!data) return null;
   return html`
     <div class="subscription">
-      ${data.total > 0 && html`
+      ${data.total > 0 ? html`
         <progress max="100" value=${data.percent}></progress>
-        <small>${bytes(data.used)} used · ${bytes(data.remaining)} remaining · ${bytes(data.total)} total</small>
-      `}
+        <small>${data.percent.toFixed(1)}% · ${bytes(data.used)} used · ${bytes(data.remaining)} remaining · ${bytes(data.total)} total</small>
+      ` : html`<small>${bytes(data.used)} used</small>`}
       ${data.expire && html`<small>Expires ${data.expire}</small>`}
     </div>
   `;
@@ -518,6 +520,7 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem(controllersKey, JSON.stringify(controllerStore));
+    localStorage.removeItem(legacyControllerKey);
   }, [controllerStore]);
 
   useEffect(() => {
