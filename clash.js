@@ -73,7 +73,7 @@ export class Clash {
     return (await this.request('PUT', `/proxies/${encode(group)}`, { name })).status === 204;
   }
 
-  async delay(name, url = 'https://www.gstatic.com/generate_204', timeout = 5000) {
+  async delay(name, url = 'http://www.gstatic.com/generate_204', timeout = 5000) {
     const params = new URLSearchParams({ url, timeout });
     const data = await this.json(`/proxies/${encode(name)}/delay?${params}`);
     return data.delay || 0;

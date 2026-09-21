@@ -192,17 +192,48 @@ function Proxies({ clash }) {
     .filter(proxy => Array.isArray(proxy.all))
     .sort((a, b) => a.name === 'GLOBAL' ? 1 : b.name === 'GLOBAL' ? -1 : 0);
 
+  const topLevelProxies = new Map(proxies.map(proxy => [proxy.name, proxy]));
+  const providerByProxy = new Map();
+  const proxyDetails = new Map(topLevelProxies);
+  for (const provider of proxyProviders) {
+    for (const proxy of provider.proxies || []) {
+      if (!providerByProxy.has(proxy.name)) providerByProxy.set(proxy.name, provider.name);
+      if (!proxyDetails.has(proxy.name)) proxyDetails.set(proxy.name, proxy);
+    }
+  }
+
   const test = async group => {
     setBusy(`group:${group.name}`);
-    for (const name of group.all) {
-      try {
-        const value = await clash.delay(name);
-        setLatency(current => ({ ...current, [name]: value }));
-      } catch {
-        setLatency(current => ({ ...current, [name]: 0 }));
+    try {
+      const directNames = [];
+      const providerNames = new Set();
+      const missingNames = [];
+
+      for (const name of group.all) {
+        if (topLevelProxies.has(name)) directNames.push(name);
+        else if (providerByProxy.has(name)) providerNames.add(providerByProxy.get(name));
+        else missingNames.push(name);
       }
+
+      const directResults = await Promise.allSettled(directNames.map(async name => ({
+        name,
+        value: await clash.delay(name),
+      })));
+      const nextLatency = {};
+      for (const result of directResults) {
+        if (result.status === 'fulfilled') nextLatency[result.value.name] = result.value.value;
+      }
+      for (const name of directNames) {
+        if (!(name in nextLatency)) nextLatency[name] = 0;
+      }
+      for (const name of missingNames) nextLatency[name] = 0;
+      setLatency(current => ({ ...current, ...nextLatency }));
+
+      await Promise.allSettled([...providerNames].map(name => clash.healthcheckProxyProvider(name)));
+      await load();
+    } finally {
+      setBusy('');
     }
-    setBusy('');
   };
   const choose = async (group, name) => {
     if (group.type !== 'Selector') return;
@@ -236,7 +267,7 @@ function Proxies({ clash }) {
             </button>
           </header>
           <div class="proxy-list">${group.all.map(name => {
-            const proxy = proxies.find(item => item.name === name);
+            const proxy = proxyDetails.get(name);
             const value = latency[name] ?? proxy?.history?.at(-1)?.delay;
             return html`
               <button class=${`proxy ${group.now === name ? 'selected' : ''}`}
