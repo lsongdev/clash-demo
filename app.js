@@ -147,14 +147,10 @@ function Overview({ version, traffic, connections, history, online }) {
         <${Stat} label="Connections" value=${connections.connections?.length || 0} />
       </div>
       <div class="charts">
-        <${Chart}
-          title="Traffic"
-          value=${`↑ ${rate(traffic.up)} · ↓ ${rate(traffic.down)}`}
-          series=${[
-            { name: 'Upload', className: 'upload', values: history.map(item => item.up) },
-            { name: 'Download', className: 'download', values: history.map(item => item.down) },
-          ]}
-        />
+        <${Chart} title="Upload" value=${rate(traffic.up)}
+          series=${[{ name: 'Upload', values: history.map(item => item.up) }]} />
+        <${Chart} title="Download" value=${rate(traffic.down)}
+          series=${[{ name: 'Download', values: history.map(item => item.down) }]} />
         <${Chart} title="Memory" value=${bytes(connections.memory)}
           series=${[{ name: 'Memory', values: history.map(item => item.memory) }]} />
         <${Chart} title="Connections" value=${connections.connections?.length || 0}
@@ -430,6 +426,7 @@ function Settings({ clash, config, setConfig, controllers, activeId, onSaveContr
   const [runtime, setRuntime] = useState({});
   const [items, setItems] = useState(controllers);
   const [selectedId, setSelectedId] = useState(activeId);
+  const [nextActiveId, setNextActiveId] = useState(activeId);
   const [saved, setSaved] = useState('');
 
   useEffect(() => {
@@ -445,9 +442,11 @@ function Settings({ clash, config, setConfig, controllers, activeId, onSaveContr
 
   useEffect(() => {
     setItems(controllers);
-    setSelectedId(activeId);
+    setSelectedId(current => controllers.some(item => item.id === current) ? current : activeId);
+    setNextActiveId(activeId);
   }, [controllers, activeId]);
 
+  const selected = items.find(item => item.id === selectedId) || items[0];
   const field = (name, value) => setRuntime(current => ({ ...current, [name]: value }));
 
   const saveRuntime = async event => {
@@ -466,21 +465,23 @@ function Settings({ clash, config, setConfig, controllers, activeId, onSaveContr
     setTimeout(() => setSaved(''), 1500);
   };
 
-  const updateController = (id, key, value) => {
-    setItems(current => current.map(item => item.id === id ? { ...item, [key]: value } : item));
+  const updateSelected = (key, value) => {
+    setItems(current => current.map(item => item.id === selectedId ? { ...item, [key]: value } : item));
   };
 
   const addController = () => {
     const id = crypto.randomUUID?.() || `controller-${Date.now()}`;
-    setItems(current => [...current, { id, name: `Controller ${current.length + 1}`, api: '', secret: '' }]);
+    const item = { id, name: `Controller ${items.length + 1}`, api: '', secret: '' };
+    setItems(current => [...current, item]);
     setSelectedId(id);
   };
 
-  const removeController = id => {
-    if (items.length === 1) return;
-    const next = items.filter(item => item.id !== id);
+  const removeSelected = () => {
+    if (!selected || items.length === 1) return;
+    const next = items.filter(item => item.id !== selected.id);
     setItems(next);
-    if (selectedId === id) setSelectedId(next[0].id);
+    setSelectedId(next[0].id);
+    if (nextActiveId === selected.id) setNextActiveId(next[0].id);
   };
 
   const saveControllers = event => {
@@ -489,8 +490,8 @@ function Settings({ clash, config, setConfig, controllers, activeId, onSaveContr
       .map(item => ({ ...item, name: item.name.trim() || 'Controller', api: item.api.trim().replace(/\/$/, '') }))
       .filter(item => item.api);
     if (!cleaned.length) return;
-    const nextActive = cleaned.some(item => item.id === selectedId) ? selectedId : cleaned[0].id;
-    onSaveControllers({ activeId: nextActive, items: cleaned });
+    const savedActiveId = cleaned.some(item => item.id === nextActiveId) ? nextActiveId : cleaned[0].id;
+    onSaveControllers({ activeId: savedActiveId, items: cleaned });
   };
 
   return html`
@@ -515,20 +516,40 @@ function Settings({ clash, config, setConfig, controllers, activeId, onSaveContr
       </article>
 
       <article>
-        <header class="row"><div><h3>Controllers</h3><small>Saved only in this browser</small></div><button type="button" onClick=${addController}>Add backend</button></header>
-        <form class="settings-form" onSubmit=${saveControllers}>
+        <header class="row">
+          <div><h3>Controllers</h3><small>Saved only in this browser</small></div>
+          <button type="button" onClick=${addController}>Add backend</button>
+        </header>
+
+        <form class="controller-editor" onSubmit=${saveControllers}>
           <div class="controller-list">
             ${items.map(item => html`
-              <fieldset class=${item.id === selectedId ? 'controller active-controller' : 'controller'}>
-                <label class="controller-active"><input type="radio" name="active-controller" checked=${item.id === selectedId} onChange=${() => setSelectedId(item.id)} /> Active</label>
-                <label class="form-row"><span>Name</span><input value=${item.name} onInput=${e => updateController(item.id, 'name', e.currentTarget.value)} /></label>
-                <label class="form-row"><span>API endpoint</span><input value=${item.api} onInput=${e => updateController(item.id, 'api', e.currentTarget.value)} placeholder="http://127.0.0.1:9090" /></label>
-                <label class="form-row"><span>Secret</span><input type="password" value=${item.secret} onInput=${e => updateController(item.id, 'secret', e.currentTarget.value)} autocomplete="off" /></label>
-                <div class="form-actions"><button class="danger" type="button" disabled=${items.length === 1} onClick=${() => removeController(item.id)}>Remove</button></div>
-              </fieldset>
+              <button
+                type="button"
+                class=${item.id === selectedId ? 'controller-item selected' : 'controller-item'}
+                onClick=${() => setSelectedId(item.id)}
+              >
+                <span>
+                  <strong>${item.name || 'Controller'}</strong>
+                  <small>${item.api || 'Not configured'}</small>
+                </span>
+                ${item.id === nextActiveId && html`<small class="active-badge">Active</small>`}
+              </button>
             `)}
           </div>
-          <div class="form-actions"><button type="submit">Save controllers</button></div>
+
+          ${selected && html`
+            <div class="controller-form">
+              <label class="form-row"><span>Name</span><input value=${selected.name} onInput=${e => updateSelected('name', e.currentTarget.value)} /></label>
+              <label class="form-row"><span>API endpoint</span><input value=${selected.api} onInput=${e => updateSelected('api', e.currentTarget.value)} placeholder="http://127.0.0.1:9090" /></label>
+              <label class="form-row"><span>Secret</span><input type="password" value=${selected.secret} onInput=${e => updateSelected('secret', e.currentTarget.value)} autocomplete="off" /></label>
+              <label class="form-row"><span>Active backend</span><input type="radio" name="active-controller" checked=${selected.id === nextActiveId} onChange=${() => setNextActiveId(selected.id)} /></label>
+              <div class="form-actions split-actions">
+                <button class="danger" type="button" disabled=${items.length === 1} onClick=${removeSelected}>Remove</button>
+                <button type="submit">Save controllers</button>
+              </div>
+            </div>
+          `}
         </form>
       </article>
     </section>
