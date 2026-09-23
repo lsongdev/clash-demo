@@ -21,7 +21,7 @@ test('uses an injected fetch implementation', async () => {
     fetch,
   });
 
-  assert.equal(await clash.setMode?.('rule') ?? await clash.setConfig({ mode: 'rule' }), true);
+  assert.equal(await clash.setConfig({ mode: 'rule' }), true);
   assert.equal(request.url, 'http://127.0.0.1:9090/configs');
   assert.equal(request.options.method, 'PATCH');
   assert.equal(request.options.headers.Authorization, 'Bearer secret');
@@ -57,8 +57,8 @@ test('uses an injected WebSocket implementation', () => {
 test('explains missing runtime transports', async () => {
   const clash = new Clash({
     api: 'http://127.0.0.1:9090',
-    fetch: undefined,
-    WebSocket: undefined,
+    fetch: null,
+    WebSocket: null,
   });
 
   await assert.rejects(() => clash.getVersion(), /fetch is not available/);
