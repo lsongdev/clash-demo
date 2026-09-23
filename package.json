@@ -1,0 +1,18 @@
+{
+  "name": "clash-demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./clash.js"
+  },
+  "files": [
+    "clash.js"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

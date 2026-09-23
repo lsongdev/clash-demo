@@ -18,7 +18,7 @@ section > article, .stack article, .stat, .chart { border: 1px solid color-mix(i
 .section-head h2, article h3 { margin-bottom: .15rem; }
 .section-head p, small, .muted { opacity: .65; }
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
-.charts { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: .75rem; margin-top: .75rem; }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-top: .75rem; }
 .chart { min-width: 0; margin: 0; }
 .chart svg { display: block; width: 100%; height: 120px; margin-top: .75rem; overflow: visible; }
 .chart polyline { fill: none; stroke: currentColor; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
@@ -48,10 +48,15 @@ section > article, .stack article, .stat, .chart { border: 1px solid color-mix(i
 .form-row > span { opacity: .7; }
 .form-row input[type="checkbox"] { justify-self: start; }
 .form-actions { display: flex; justify-content: flex-end; align-items: center; gap: .75rem; }
-.controller-list { display: grid; gap: .75rem; }
-.controller { border: 1px solid color-mix(in srgb, CanvasText 16%, transparent); border-radius: .6rem; padding: 1rem; display: grid; gap: .75rem; }
-.controller.active-controller { border-width: 2px; }
-.controller-active { display: flex; align-items: center; gap: .4rem; font-weight: 600; }
+.controller-editor { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(0, 2fr); gap: 1rem; margin-top: 1rem; }
+.controller-list { display: grid; align-content: start; gap: .5rem; }
+.controller-item { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .7rem; text-align: left; }
+.controller-item > span { display: grid; min-width: 0; gap: .15rem; }
+.controller-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.controller-item.selected { outline: 2px solid currentColor; }
+.active-badge { flex: none; }
+.controller-form { display: grid; gap: .75rem; min-width: 0; }
+.split-actions { justify-content: space-between; }
 .table-wrap { overflow-x: auto; margin-top: 1rem; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: .55rem; border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent); text-align: left; }
@@ -67,6 +72,7 @@ tr.disabled { opacity: .45; }
   .topbar, .section-head { align-items: flex-start; flex-direction: column; }
   .stats, .details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .charts { grid-template-columns: 1fr; }
+  .controller-editor { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; gap: .35rem; }
   .tabs { width: 100%; }
 }
