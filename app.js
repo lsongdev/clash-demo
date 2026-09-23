@@ -422,11 +422,10 @@ function Connections({ clash, snapshot }) {
   `;
 }
 
-function Settings({ clash, config, setConfig, controllers, activeId, onSaveControllers }) {
+function Settings({ clash, config, setConfig, controllers, onSaveControllers }) {
   const [runtime, setRuntime] = useState({});
   const [items, setItems] = useState(controllers);
-  const [selectedId, setSelectedId] = useState(activeId);
-  const [nextActiveId, setNextActiveId] = useState(activeId);
+  const [selectedId, setSelectedId] = useState(controllers[0]?.id);
   const [saved, setSaved] = useState('');
 
   useEffect(() => {
@@ -442,9 +441,8 @@ function Settings({ clash, config, setConfig, controllers, activeId, onSaveContr
 
   useEffect(() => {
     setItems(controllers);
-    setSelectedId(current => controllers.some(item => item.id === current) ? current : activeId);
-    setNextActiveId(activeId);
-  }, [controllers, activeId]);
+    setSelectedId(current => controllers.some(item => item.id === current) ? current : controllers[0]?.id);
+  }, [controllers]);
 
   const selected = items.find(item => item.id === selectedId) || items[0];
   const field = (name, value) => setRuntime(current => ({ ...current, [name]: value }));
@@ -480,8 +478,7 @@ function Settings({ clash, config, setConfig, controllers, activeId, onSaveContr
     if (!selected || items.length === 1) return;
     const next = items.filter(item => item.id !== selected.id);
     setItems(next);
-    setSelectedId(next[0].id);
-    if (nextActiveId === selected.id) setNextActiveId(next[0].id);
+    setSelectedId(next[0]?.id);
   };
 
   const saveControllers = event => {
@@ -490,8 +487,9 @@ function Settings({ clash, config, setConfig, controllers, activeId, onSaveContr
       .map(item => ({ ...item, name: item.name.trim() || 'Controller', api: item.api.trim().replace(/\/$/, '') }))
       .filter(item => item.api);
     if (!cleaned.length) return;
-    const savedActiveId = cleaned.some(item => item.id === nextActiveId) ? nextActiveId : cleaned[0].id;
-    onSaveControllers({ activeId: savedActiveId, items: cleaned });
+    onSaveControllers(cleaned);
+    setItems(cleaned);
+    setSelectedId(current => cleaned.some(item => item.id === current) ? current : cleaned[0].id);
   };
 
   return html`
@@ -529,11 +527,8 @@ function Settings({ clash, config, setConfig, controllers, activeId, onSaveContr
                 class=${item.id === selectedId ? 'controller-item selected' : 'controller-item'}
                 onClick=${() => setSelectedId(item.id)}
               >
-                <span>
-                  <strong>${item.name || 'Controller'}</strong>
-                  <small>${item.api || 'Not configured'}</small>
-                </span>
-                ${item.id === nextActiveId && html`<small class="active-badge">Active</small>`}
+                <strong>${item.name || 'Controller'}</strong>
+                <small>${item.api || 'Not configured'}</small>
               </button>
             `)}
           </div>
@@ -543,7 +538,6 @@ function Settings({ clash, config, setConfig, controllers, activeId, onSaveContr
               <label class="form-row"><span>Name</span><input value=${selected.name} onInput=${e => updateSelected('name', e.currentTarget.value)} /></label>
               <label class="form-row"><span>API endpoint</span><input value=${selected.api} onInput=${e => updateSelected('api', e.currentTarget.value)} placeholder="http://127.0.0.1:9090" /></label>
               <label class="form-row"><span>Secret</span><input type="password" value=${selected.secret} onInput=${e => updateSelected('secret', e.currentTarget.value)} autocomplete="off" /></label>
-              <label class="form-row"><span>Active backend</span><input type="radio" name="active-controller" checked=${selected.id === nextActiveId} onChange=${() => setNextActiveId(selected.id)} /></label>
               <div class="form-actions split-actions">
                 <button class="danger" type="button" disabled=${items.length === 1} onClick=${removeSelected}>Remove</button>
                 <button type="submit">Save controllers</button>
@@ -595,9 +589,15 @@ function App() {
     }].slice(-60));
   }, [traffic]);
 
-  const saveControllers = store => {
-    setControllerStore(store);
-    location.hash = '#overview';
+  const saveControllers = items => {
+    setControllerStore(current => ({
+      activeId: items.some(item => item.id === current.activeId) ? current.activeId : items[0].id,
+      items,
+    }));
+  };
+
+  const switchController = activeId => {
+    setControllerStore(current => ({ ...current, activeId }));
   };
 
   const pages = {
@@ -606,17 +606,17 @@ function App() {
     rules: html`<${Rules} clash=${clash} />`,
     connections: html`<${Connections} clash=${clash} snapshot=${connections} />`,
     settings: html`<${Settings} clash=${clash} config=${config} setConfig=${setConfig}
-      controllers=${controllerStore.items} activeId=${controllerStore.activeId} onSaveControllers=${saveControllers} />`,
+      controllers=${controllerStore.items} onSaveControllers=${saveControllers} />`,
   };
 
   return html`
     <div class="shell">
       <header class="topbar">
-        <div class="brand-wrap">
-          <a class="brand" href="#overview"><strong>Clash</strong></a>
-          <small>${activeController.name}</small>
-        </div>
+        <a class="brand" href="#overview"><strong>Clash</strong></a>
         <nav class="tabs">${tabs.map(tab => html`<a class=${route === tab ? 'active' : ''} href=${`#${tab}`}>${tab}</a>`)}</nav>
+        <select class="controller-switcher" value=${controllerStore.activeId} onChange=${e => switchController(e.currentTarget.value)} aria-label="Controller">
+          ${controllerStore.items.map(item => html`<option value=${item.id}>${item.name}</option>`)}
+        </select>
       </header>
       <main><${Notice} error=${error} />${pages[route]}</main>
     </div>

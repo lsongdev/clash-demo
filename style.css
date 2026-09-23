@@ -9,8 +9,8 @@ button:disabled { cursor: default; opacity: .5; }
 .topbar, .section-head, .row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .topbar { position: sticky; top: 0; z-index: 2; padding: 1rem 0; background: Canvas; border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent); }
 .brand { color: inherit; text-decoration: none; font-size: 1.2rem; }
-.brand-wrap { display: flex; align-items: baseline; gap: .6rem; }
 .tabs { display: flex; gap: .25rem; overflow-x: auto; }
+.controller-switcher { max-width: 15rem; padding: .4rem .55rem; }
 .tabs a { color: inherit; padding: .4rem .6rem; text-decoration: none; text-transform: capitalize; border-radius: .4rem; white-space: nowrap; }
 .tabs a.active, .segmented .active { background: CanvasText; color: Canvas; }
 main { padding-top: 1.5rem; }
@@ -48,13 +48,11 @@ section > article, .stack article, .stat, .chart { border: 1px solid color-mix(i
 .form-row > span { opacity: .7; }
 .form-row input[type="checkbox"] { justify-self: start; }
 .form-actions { display: flex; justify-content: flex-end; align-items: center; gap: .75rem; }
-.controller-editor { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(0, 2fr); gap: 1rem; margin-top: 1rem; }
+.controller-editor { display: grid; gap: 1rem; margin-top: 1rem; }
 .controller-list { display: grid; align-content: start; gap: .5rem; }
-.controller-item { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .7rem; text-align: left; }
-.controller-item > span { display: grid; min-width: 0; gap: .15rem; }
+.controller-item { display: grid; gap: .15rem; padding: .7rem; text-align: left; }
 .controller-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .controller-item.selected { outline: 2px solid currentColor; }
-.active-badge { flex: none; }
 .controller-form { display: grid; gap: .75rem; min-width: 0; }
 .split-actions { justify-content: space-between; }
 .table-wrap { overflow-x: auto; margin-top: 1rem; }
@@ -72,7 +70,6 @@ tr.disabled { opacity: .45; }
   .topbar, .section-head { align-items: flex-start; flex-direction: column; }
   .stats, .details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .charts { grid-template-columns: 1fr; }
-  .controller-editor { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; gap: .35rem; }
   .tabs { width: 100%; }
 }

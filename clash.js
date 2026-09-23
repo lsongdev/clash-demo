@@ -25,7 +25,7 @@ export class Clash {
     if (typeof this.fetch !== 'function') {
       throw new Error('fetch is not available; use Node.js 18+ or pass fetch to Clash');
     }
-    const response = await this.fetch(this.api + path, {
+    const response = await this.fetch.call(globalThis, this.api + path, {
       method,
       headers: this.headers(),
       body: body == null ? undefined : JSON.stringify(body),

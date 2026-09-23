@@ -4,7 +4,8 @@ import { Clash } from '../clash.js';
 
 test('uses an injected fetch implementation', async () => {
   let request;
-  const fetch = async (url, options) => {
+  const fetch = async function (url, options) {
+    assert.equal(this, globalThis);
     request = { url, options };
     return {
       ok: true,
