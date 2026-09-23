@@ -1,9 +1,17 @@
 const encode = encodeURIComponent;
 
 export class Clash {
-  constructor({ api, secret = '' }) {
+  constructor({
+    api,
+    secret = '',
+    fetch: fetchImpl = globalThis.fetch,
+    WebSocket: WebSocketImpl = globalThis.WebSocket,
+  }) {
+    if (!api) throw new TypeError('api is required');
     this.api = api.replace(/\/$/, '');
     this.secret = secret;
+    this.fetch = fetchImpl;
+    this.WebSocket = WebSocketImpl;
   }
 
   headers() {
@@ -14,7 +22,10 @@ export class Clash {
   }
 
   async request(method, path, body) {
-    const response = await fetch(this.api + path, {
+    if (typeof this.fetch !== 'function') {
+      throw new Error('fetch is not available; use Node.js 18+ or pass fetch to Clash');
+    }
+    const response = await this.fetch(this.api + path, {
       method,
       headers: this.headers(),
       body: body == null ? undefined : JSON.stringify(body),
@@ -31,11 +42,14 @@ export class Clash {
   }
 
   socket(path, onMessage, onError) {
+    if (typeof this.WebSocket !== 'function') {
+      throw new Error('WebSocket is not available; use Node.js 22+ or pass WebSocket to Clash');
+    }
     const url = new URL(this.api + path);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     if (this.secret) url.searchParams.set('token', this.secret);
 
-    const ws = new WebSocket(url);
+    const ws = new this.WebSocket(url);
     ws.onmessage = event => {
       try {
         onMessage(JSON.parse(event.data));
