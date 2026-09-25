@@ -63,6 +63,10 @@ tr.disabled { opacity: .45; }
 .break { word-break: break-all; }
 .stack { display: grid; gap: .6rem; }
 .stack article { margin: 0; }
+.rule-list { margin-top: 1rem; }
+.rule-target { display: grid; justify-items: end; gap: .15rem; white-space: nowrap; }
+.rule-index { min-width: 2.5rem; opacity: .6; font-variant-numeric: tabular-nums; }
+.rule-list article.disabled { opacity: .45; }
 .grow { min-width: 0; flex: 1; }
 .connection strong { overflow-wrap: anywhere; }
 
@@ -72,4 +76,6 @@ tr.disabled { opacity: .45; }
   .charts { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; gap: .35rem; }
   .tabs { width: 100%; }
+  .rule-list .row { align-items: flex-start; flex-wrap: wrap; }
+  .rule-target { margin-left: auto; }
 }

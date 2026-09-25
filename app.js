@@ -349,16 +349,19 @@ function Rules({ clash }) {
       </header>
       <${Notice} error=${error} />
       <input class="wide" value=${query} onInput=${e => setQuery(e.currentTarget.value)} placeholder="Filter rules…" />
-      <div class="table-wrap"><table>
-        <thead><tr><th>#</th><th>Type</th><th>Payload</th><th>Target</th><th>Hits</th><th class="actions-cell"></th></tr></thead>
-        <tbody>${filtered.map(rule => html`
-          <tr class=${rule.extra?.disabled ? 'disabled' : ''}>
-            <td>${rule.index}</td><td>${rule.type}</td><td class="break">${rule.payload || '—'}</td>
-            <td>${rule.proxy}</td><td>${rule.extra?.hitCount ?? '—'}</td>
-            <td class="actions-cell"><button onClick=${() => toggle(rule)}>${rule.extra?.disabled ? 'Enable' : 'Disable'}</button></td>
-          </tr>
-        `)}</tbody>
-      </table></div>
+      <div class="stack rule-list">${filtered.map(rule => html`
+        <article class=${rule.extra?.disabled ? 'disabled' : ''}>
+          <header class="row">
+            <span class="rule-index">#${rule.index}</span>
+            <div class="grow">
+              <strong class="break">${rule.payload || '—'}</strong>
+              <div><small>${rule.type}</small></div>
+            </div>
+            <div class="rule-target"><strong>${rule.proxy || '—'}</strong><small>${rule.extra?.hitCount ?? '—'} hits</small></div>
+            <button onClick=${() => toggle(rule)}>${rule.extra?.disabled ? 'Enable' : 'Disable'}</button>
+          </header>
+        </article>
+      `)}</div>
 
       <header class="section-head providers-head">
         <div><h2>Rule Providers</h2><p>${providers.length} rule sets</p></div>
